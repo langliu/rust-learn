@@ -1,0 +1,6 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+# 所有 crate 共享的依赖版本，子 crate 用 `{ workspace = true }` 引用
+[workspace.dependencies]
