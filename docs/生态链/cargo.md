@@ -103,6 +103,16 @@ src/bin/foo.rs    → cargo run --bin foo
 src/bin/bar.rs    → cargo run --bin bar
 ```
 
+其他常见目标目录：
+
+```text
+examples/hello.rs       → cargo run --example hello
+benches/speed.rs        → cargo bench
+build.rs                → 编译前执行的构建脚本
+```
+
+构建脚本常用于生成代码、探测系统库或编译 C/C++ 代码；它不是普通的二进制入口。
+
 ---
 
 ## 4. 创建项目
@@ -165,6 +175,27 @@ cc = "1"
 | `[workspace]` | 声明工作区成员 |
 | `[profile.release]` | 调优化级别、LTO 等 |
 
+还可以声明项目支持的最低 Rust 版本（MSRV）：
+
+```toml
+[package]
+rust-version = "1.85"
+```
+
+`rust-version` 是兼容性声明，不会自动切换编译器；需要固定实际工具链时，使用 `rust-toolchain.toml`。
+
+常用 profile 配置示例：
+
+```toml
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+```
+
 版本号遵循 **SemVer**。`"0.9"` 等价于 `^0.9`：允许 `0.9.x`，不允许 `0.10`。
 
 锁定的精确版本写在 **`Cargo.lock`**：
@@ -190,6 +221,20 @@ cc = "1"
 | `cargo tree` | 看依赖树 |
 | `cargo clean` | 清掉 `target/` |
 | `cargo update` | 在 `Cargo.toml` 约束内更新 lock |
+| `cargo metadata` | 以机器可读格式查看 workspace 和依赖信息 |
+| `cargo fetch` | 预先下载依赖，不执行构建 |
+| `cargo install` | 安装带二进制的 crate，不是给当前项目添加依赖 |
+
+可复现构建和网络受限环境常用：
+
+```bash
+cargo check --workspace
+cargo build --locked       # lock 不允许变化
+cargo test --frozen        # 等价于 --locked --offline
+cargo fetch --locked
+cargo build --offline      # 只使用本地缓存
+cargo metadata --no-deps --format-version 1
+```
 
 开发时优先 `cargo check`：它不生成可执行文件，反馈更快。
 
@@ -246,7 +291,21 @@ cargo remove rand
 
 ```bash
 cargo tree -i libc
+cargo tree -e features       # 查看 feature 的传播
+cargo tree --duplicates      # 查找同一个 crate 的多个版本
 ```
+
+### 按目标平台声明依赖
+
+```toml
+[target.'cfg(windows)'.dependencies]
+windows-sys = "0.59"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+```
+
+开发临时依赖或本地修复可以使用 `[patch.crates-io]`，但应在提交前确认不会意外改变整个依赖树。
 
 ---
 
@@ -280,9 +339,12 @@ crate 常用 feature 做可选功能，避免默认依赖过重。
 serde = { version = "1", features = ["derive"] }
 ```
 
-自己的库也可以声明：
+自己的库也可以声明可选依赖和 feature：
 
 ```toml
+[dependencies]
+serde = { version = "1", optional = true }
+
 [features]
 default = ["std"]
 std = []
@@ -296,7 +358,7 @@ cargo build --features json
 cargo build --no-default-features --features json
 ```
 
-原则：**默认 feature 保持精简**；可选能力拆成独立 feature。
+原则：**默认 feature 保持精简**；可选能力拆成独立 feature。Feature 通常是累加的：workspace 中不同 crate 启用同一个依赖的 feature 时，Cargo 可能会对该依赖统一启用这些 feature，因此不要把“关闭某个 feature”当作绝对隔离。
 
 ---
 
@@ -316,19 +378,36 @@ resolver = "3"
 好处：
 
 1. 一次 `cargo test --workspace` 跑全部成员
-2. 共享 `Cargo.lock` 和 `target/`，依赖版本一致、编译缓存复用
+2. 共享 `Cargo.lock` 和 `target/`，依赖解析结果统一、编译缓存复用
 3. `[workspace.dependencies]` 避免每个 crate 各写一套版本号
 
-在某个成员目录执行 `cargo run` 时，Cargo 会自动找到根 workspace。指定成员：
+同一个依赖的约束如果互不兼容，lockfile 中仍可能同时解析出多个版本。`[workspace.dependencies]` 能统一直接依赖的声明，但不会强行消除所有传递依赖版本。
+
+在某个成员目录执行 `cargo run` 时，Cargo 会自动找到根 workspace。指定成员或筛选成员：
 
 ```bash
 cargo run -p guessing_game
 cargo test -p greeting
+cargo test --workspace
+cargo test --workspace --exclude demos
 ```
 
 ---
 
 ## 11. 测试、文档与发布
+
+### 构建脚本
+
+项目根目录的 `build.rs` 会在编译 package 前运行。它可以生成代码、编译原生库，并通过 `OUT_DIR` 输出中间文件：
+
+```rust
+fn main() {
+    println!("cargo::rerun-if-changed=schemas/input.json");
+    // 将生成文件写入 std::env::var("OUT_DIR")，不要写入 src/
+}
+```
+
+只要可能，就用 `cargo::rerun-if-changed` 或 `cargo::rerun-if-env-changed` 缩小重新执行范围，避免每次构建都运行脚本。
 
 ### 测试
 
@@ -375,11 +454,27 @@ cargo doc --open
 ### 发布到 crates.io
 
 ```bash
-cargo login
-cargo publish
+cargo package --list       # 查看将要打包的文件
+cargo publish --dry-run    # 只检查，不上传
+cargo login                # 配置 crates.io token
+cargo publish -p my-crate
 ```
 
-发布前确认：`name` 未被占用、`license` 已填、公开 API 有文档。学习仓库不必发布。
+发布前确认：`name` 未被占用、`license` 已填、公开 API 有文档。token 属于敏感凭据，不要提交到仓库。workspace 发布时可用 `-p` 逐个选择 package；学习仓库不必发布。
+
+### 周边工具
+
+Cargo 会和其他 Rust 工具协作：
+
+| 工具 | 常用命令 | 作用 |
+|------|----------|------|
+| rustfmt | `cargo fmt` | 统一代码格式 |
+| Clippy | `cargo clippy` | 静态检查和改进建议 |
+| rustdoc | `cargo doc` | 生成 API 文档和文档测试 |
+| rust-analyzer | 编辑器集成 | 补全、跳转、诊断和重构 |
+| crates.io / docs.rs | 发布后使用 | crate 注册表和在线文档 |
+
+可以把一次构建理解为：rustup 选择工具链，Cargo 解析依赖并安排任务，rustc 编译各个 crate，linker 生成最终可执行文件；rustfmt、Clippy 和 rust-analyzer 则分别服务于格式化、静态检查和编辑体验。
 
 ---
 
@@ -400,6 +495,14 @@ cargo publish
 5. **忘记 `--` 传参**  
    `cargo run --bin quiz --help` 看到的是 Cargo 的 help，不是 quiz 的。
 
+6. **把 `cargo check` 当成完整构建**
+
+   它通常不会执行最终代码生成和链接，因此仍应在 CI 或发布前运行 `cargo build`、`cargo test`，必要时再运行 release 构建。
+
+7. **不加 `--locked` 就声称构建可复现**
+
+   CI 可以使用 `cargo check --locked` 或 `cargo test --locked`，确保 Cargo 不会悄悄修改 lockfile。
+
 ---
 
 ## 13. 练习题
@@ -409,6 +512,8 @@ cargo publish
 3. 用 `cargo tree -p hello_cargo` 画出依赖树，指出 `rand` 还拉进了哪些包。
 4. 写一个 `#[test]`，断言你的打印辅助函数返回的字符串包含 `hello`。
 5. 解释：为什么本仓库的 `cargo build` 在根目录执行，产物却都进同一个 `target/`？
+6. 分别运行 `cargo test --locked`、`cargo test --offline`，说明它们对 lockfile 和网络的要求。
+7. 写一个简单的 `build.rs`，使用 `cargo::rerun-if-changed` 控制它的重新执行条件。
 
 ---
 

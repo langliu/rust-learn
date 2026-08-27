@@ -37,7 +37,7 @@
 
 > **rustc 编译；Cargo 组织项目并调用 rustc；rustup 决定用哪一套 rustc。**
 
-所有权、借用、生命周期不通过，就是 **rustc 在编译期拒绝**，不会拖到运行时。细节见 [ownership.md](../ownership.md)。
+所有权、借用、生命周期不通过，就是 **rustc 在编译期拒绝**，不会拖到运行时。相关概念见[所有权笔记](../ownership.md)。
 
 ---
 
@@ -83,6 +83,12 @@ fn main() {
 ```bash
 rustc hello.rs
 ./hello
+```
+
+直接调用 `rustc` 时，标准库通常由当前工具链的 sysroot 提供；查看它的位置：
+
+```bash
+rustc --print sysroot
 ```
 
 指定输出名、优化、带调试信息：
@@ -137,11 +143,12 @@ rustc --edition 2024 hello.rs
 | `proc-macro` | 过程宏 |
 
 ```bash
-rustc --crate-type lib lib.rs          # 得到 lib<name>.rlib
+rustc --crate-type lib lib.rs          # 通常得到 lib<name>.rlib
+rustc --crate-type rlib lib.rs         # 明确生成 Rust 专用 rlib
 rustc --crate-type cdylib lib.rs
 ```
 
-Cargo 里对应 `[lib] crate-type = ["cdylib"]` 等，不必手写 rustc。
+`rlib` 主要供 Rust crate 之间链接；`cdylib`、`staticlib` 面向 C 等其他语言，除了产物格式，还要注意导出符号和 ABI。Cargo 里对应 `[lib] crate-type = ["cdylib"]` 等，不必手写 rustc。
 
 ---
 
@@ -158,12 +165,16 @@ Cargo 里对应 `[lib] crate-type = ["cdylib"]` 等，不必手写 rustc。
 | `-L <目录>` | 额外库搜索路径 |
 | `--extern name=path` | 链接已编译的依赖 |
 | `--target <triple>` | 交叉编译目标 |
-| `--emit asm,llvm-ir,mir,obj,link` | 停在中间产物 |
+| `--emit asm,llvm-ir,mir,obj,link` | 输出中间产物或最终链接结果 |
 | `-C opt-level=3` | 优化级别（0/1/2/3/s/z） |
 | `-C debuginfo=2` | 调试信息 |
 | `--explain <E0xxx>` | 解释错误码 |
 | `--print cfg` | 打印当前 cfg |
-| `-W` / `-A` / `-D` | 警告：warn / allow / deny |
+| `--print sysroot` | 打印工具链 sysroot 路径 |
+| `--print target-list` | 列出支持的目标平台 |
+| `--cfg <键>[="值"]` | 手动启用条件编译配置 |
+| `--error-format=json` | 以 JSON 输出诊断信息，便于 IDE/CI 处理 |
+| `-W` / `-A` / `-D` | 设置 lint 等级：warn / allow / deny |
 
 看 rustc 认为当前平台开了哪些 `cfg`：
 
@@ -177,6 +188,8 @@ rustc --print cfg
 rustup target add wasm32-unknown-unknown
 rustc --target wasm32-unknown-unknown --crate-type cdylib lib.rs
 ```
+
+> `rustup target add` 只提供目标平台的 Rust 标准库。非 wasm 目标通常还需要对应的 linker、C/C++ 交叉编译器或系统 SDK；安装 target 本身不等于交叉编译环境已经准备完成。
 
 ---
 
@@ -208,6 +221,8 @@ RUSTFLAGS="-C target-cpu=native" cargo build -p demos --release
 
 `--` 后面才是 rustc 的参数，前面是 Cargo 的。这和 `cargo run -- --help` 是同一套规则。
 
+`-C target-cpu=native` 会针对当前机器优化，生成的程序可能无法在其他机器上运行；适合本机性能测试，不适合作为通用发布产物。
+
 `cargo build -v` 能看到完整 rustc 命令行，是理解 Cargo 如何驱动编译器的最快办法。
 
 ---
@@ -221,9 +236,10 @@ RUSTFLAGS="-C target-cpu=native" cargo build -p demos --release
 3. **名称解析与类型检查**
 4. **借用检查**（所有权、生命周期）
 5. **MIR**：中间表示，继续优化
-6. **LLVM IR** → 机器码 → 链接
+6. **LLVM IR** → 目标文件（机器码）
+7. **链接**：二进制或动态库还需要 linker 组合目标文件、依赖库和系统库
 
-日常感知最强的是第 3、4 步：报错几乎都来自这里。`--emit=mir` 或 `--emit=llvm-ir` 可以看见中间结果，一般学习阶段不必碰。
+库 crate 可能在生成 `rlib` 等库产物后结束；二进制 crate 通常还要经过最后的链接步骤。日常感知最强的是第 3、4 步：报错几乎都来自这里。`--emit=mir` 或 `--emit=llvm-ir` 可以看见中间结果，一般学习阶段不必碰。
 
 Cargo 的 debug / release 大致对应：
 
@@ -231,9 +247,9 @@ Cargo 的 debug / release 大致对应：
 |-------|-------------------|
 | `cargo build` | 低优化 + 调试信息，编译快 |
 | `cargo build --release` | `-O` / 高 `opt-level`，运行快、编译慢 |
-| `cargo check` | 只做到类型/借用检查，不生成可执行文件 |
+| `cargo check` | 只做到类型/借用检查，不生成最终可执行文件 |
 
-`cargo check` 快，就是因为它让 rustc **少做后面几步**。
+`cargo check` 快，就是因为它让 rustc **少做后面的代码生成和链接**。但 build script、过程宏及其依赖仍可能被编译和执行，因此它并不是完全不产生构建产物。
 
 ---
 
@@ -254,6 +270,10 @@ Cargo 的 debug / release 大致对应：
 5. **对着 `cargo rustc --help` 找 `-C`**  
    `-C` 是 rustc 的 codegen 旗标，必须写在 `--` 后面。
 
+6. **以为 `--target` 自动准备好交叉编译**
+
+   `--target` 只选择目标平台；标准库、linker、系统库和 SDK 是否准备好，仍要分别确认。
+
 ---
 
 ## 11. 练习题
@@ -263,6 +283,7 @@ Cargo 的 debug / release 大致对应：
 3. 对一段会 move 的代码触发编译错误，用 `rustc --explain` 查对应错误码（常见 `E0382`）。
 4. 在本仓库执行 `cargo build -p demos -v`，从输出里找出 rustc 命令，标出 `--crate-name`、`--edition`、输出路径。
 5. 解释：为什么 `cargo check -p demos` 比 `cargo build -p demos` 快，却不能当可执行文件来跑？
+6. 运行 `rustc --print sysroot` 和 `rustc --print target-list`，说明它们分别回答什么问题。
 
 ---
 

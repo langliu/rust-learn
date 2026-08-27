@@ -61,6 +61,8 @@ rustc --version
 cargo --version
 ```
 
+Windows 用户可以从 [rustup.rs](https://rustup.rs) 下载并运行 `rustup-init.exe`，安装流程与 macOS / Linux 类似；安装完成后重新打开终端，让 `PATH` 配置生效。
+
 `rustc`、`cargo` 对不上或提示 command not found，把 `~/.cargo/bin` 加进 `PATH`（安装脚本一般会改 shell 配置，新开一个终端再试）。
 
 国内下载慢时，可先设镜像再跑安装脚本（以中科大为例）：
@@ -69,6 +71,8 @@ cargo --version
 export RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
 export RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
 ```
+
+这两个变量只影响 rustup 下载工具链和组件，不会自动改变 Cargo 下载 crates.io 依赖时使用的 registry。Cargo 的 registry、代理和 linker 等项目级配置通常放在 `.cargo/config.toml`，不要把两套镜像配置混为一谈。
 
 ---
 
@@ -100,6 +104,8 @@ rustup which rustc
 |------|------|------|
 | `RUSTUP_HOME` | `~/.rustup` | 工具链、设置 |
 | `CARGO_HOME` | `~/.cargo` | 代理、cargo 配置、registry 缓存 |
+
+`rust-analyzer` 不一定随默认 profile 安装。它可以作为 rustup 组件安装，也可能由编辑器（例如 Zed、VS Code 扩展）单独提供；遇到 IDE 无法补全时，先确认编辑器实际使用的是哪一个 `rust-analyzer`。
 
 ---
 
@@ -192,6 +198,15 @@ cargo build --target wasm32-unknown-unknown
 
 target 同样挂在当前工具链上。只装了 wasm 目标、却用 `cargo +nightly` 编，如果 nightly 没加过这个 target，仍会失败。
 
+> `rustup target add` 只安装目标平台的 Rust 标准库，不会自动安装完整的交叉编译工具链。非 wasm 目标通常还需要对应的 linker、C/C++ 交叉编译器或系统 SDK，并在 Cargo 中配置 linker。
+
+例如 Linux 交叉编译器名为 `aarch64-linux-gnu-gcc` 时，可以在项目的 `.cargo/config.toml` 中指定：
+
+```toml
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+```
+
 ---
 
 ## 7. 覆盖与 rust-toolchain.toml
@@ -199,11 +214,20 @@ target 同样挂在当前工具链上。只装了 wasm 目标、却用 `cargo +n
 生效优先级（高 → 低，简化理解）：
 
 1. 命令行：`cargo +nightly build`
-2. 当前目录（或父目录）的 `rust-toolchain.toml` / `rust-toolchain`
+2. `RUSTUP_TOOLCHAIN` 环境变量
 3. `rustup override set` 写在目录上的覆盖
-4. `rustup default` 的全局默认
+4. 当前目录（或父目录）的 `rust-toolchain.toml` / `rust-toolchain`
+5. `rustup default` 的全局默认
+
+也可以用环境变量临时覆盖项目设置：
+
+```bash
+RUSTUP_TOOLCHAIN=nightly cargo check
+```
 
 项目里推荐把版本写进仓库，别人 clone 下来 rustup 会自动下载对应工具链。
+
+`rust-toolchain`（无 `.toml` 后缀）可以只写一行工具链名称，例如 `stable`；需要声明 `components` 或 `targets` 时使用 `rust-toolchain.toml`。工具链文件解决“使用哪套 Rust”，而 `Cargo.toml` 的 `rust-version` 解决“项目最低支持哪一版 Rust”，两者不是一回事。
 
 `rust-toolchain.toml` 示例：
 
@@ -287,6 +311,10 @@ rustup doc --cargo    # Cargo Book 本地版
 6. **把 `RUSTUP_HOME` 当项目目录**  
    工具链很占空间（每套数百 MB 到 1GB+），可 `rustup toolchain uninstall` 清不用的 nightly / 旧版本。
 
+7. **以为安装 target 就能完成交叉编译**
+
+   target 只提供 Rust 标准库；若报 linker 或系统库错误，需要另外安装目标平台的原生工具链，并配置 Cargo 的 linker。
+
 ---
 
 ## 11. 练习题
@@ -295,7 +323,8 @@ rustup doc --cargo    # Cargo Book 本地版
 2. 安装 nightly，用 `cargo +nightly -V` 和 `cargo -V` 对比两个版本，然后把全局默认改回 stable。
 3. 确认 `clippy`、`rustfmt` 已安装，在本仓库执行 `cargo fmt --all -- --check` 和 `cargo clippy --workspace`。
 4. 在任意临时目录放一个只含 `channel = "stable"` 的 `rust-toolchain.toml`，再 `rustup show`，看“active toolchain”从哪来。
-5. 解释：为什么本机同时装着 stable 和 nightly 时，敲 `cargo build` 仍然用 stable？
+5. 设置 `RUSTUP_TOOLCHAIN=nightly` 后运行 `cargo +stable -V`，观察命令行覆盖环境变量的效果。
+6. 解释：为什么本机同时装着 stable 和 nightly 时，敲 `cargo build` 仍然用 stable？
 
 ---
 
