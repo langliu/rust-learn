@@ -35,7 +35,7 @@ Rust 的发布方式不是“下一个安装包覆盖上一个”，而是**多�
 |------|--------|
 | **rustup** | 机器上的 `rustc` / `cargo` 版本、组件、交叉编译目标 |
 | **cargo** | 当前项目的依赖、构建、测试、发布（见 [cargo.md](cargo.md)） |
-| **rustc** | 把一份 crate 编译成库或可执行文件 |
+| **rustc** | 把一份 crate 编译成库或可执行文件（见 [rustc.md](rustc.md)） |
 
 一句话：
 
@@ -304,4 +304,4 @@ rustup doc --cargo    # Cargo Book 本地版
 - 安装：[rustup.rs](https://rustup.rs)
 - 手册：[The rustup book](https://rust-lang.github.io/rustup/)
 - 工具链文件：[Overrides](https://rust-lang.github.io/rustup/overrides.html)
-- 下一篇：[Cargo：Rust 的包管理与构建工具](cargo.md)
+- 下一篇：[rustc：Rust 编译器](rustc.md)

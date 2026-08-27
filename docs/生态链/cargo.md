@@ -43,7 +43,7 @@ Rust 编译器本体是 `rustc`。直接调 `rustc src/main.rs` 能编译单个�
 
 一句话：
 
-> **写 Rust 代码用 rustc；管 Rust 项目用 Cargo。**
+> **写 Rust 代码用 rustc（见 [rustc.md](rustc.md)）；管 Rust 项目用 Cargo。**
 
 ---
 
@@ -418,3 +418,4 @@ cargo publish
 - 依赖规范：[Specifying Dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html)
 - 工作区：[Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)
 - crates 索引：[crates.io](https://crates.io)
+- 编译器：[rustc：Rust 编译器](rustc.md)

@@ -14,6 +14,7 @@ rust-learn/
     ├── ownership.md    # 所有权笔记
     └── 生态链/
         ├── rustup.md   # rustup 介绍
+        ├── rustc.md    # rustc 介绍
         └── cargo.md    # Cargo 介绍
 ```
 
@@ -59,6 +60,7 @@ cargo new crates/greet --lib --name greet
 |------|------|
 | [docs/ownership.md](docs/ownership.md) | 所有权、移动、借用、切片、生命周期初见 |
 | [docs/生态链/rustup.md](docs/生态链/rustup.md) | rustup：工具链、组件、target、覆盖 |
+| [docs/生态链/rustc.md](docs/生态链/rustc.md) | rustc：编译单元、crate 类型、参数与错误码 |
 | [docs/生态链/cargo.md](docs/生态链/cargo.md) | Cargo：包、依赖、workspace、常用命令 |
 
 ## 约定
